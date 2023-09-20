@@ -29,15 +29,24 @@ fn u8_array_to_u32_array(arr: &[u8; 32]) -> [u32; 8] {
     let mut result: [u32; 8] = [0; 8];
 
     for i in 0..8 {
-        let mut chunk: u32 = 0;
-        for j in 0..4 {
-            chunk |= (arr[i * 4 + j] as u32) << (8 * j);
-        }
-        result[i] = chunk;
+        let sub_arr = &arr[i*4 .. (i+1)*4];
+        result[i] = calculate_value2(sub_arr);
     }
 
     result
 }
+
+
+// fn u8_array_to_u32_array2(arr: &[u8; 8]) -> [u32; 2] {
+//     let mut result: [u32; 2] = [0; 2];
+
+//     for i in 0..2 {
+//         result[i] = calculate_value2(&arr[i*4 .. (i+1)*4]);
+//     }
+
+//     result
+// }
+
 
 fn calculate_value(byte_array: &[u8; 32]) -> BigUint {
     let mut value: BigUint = BigUint::from(0u128);
@@ -49,6 +58,27 @@ fn calculate_value(byte_array: &[u8; 32]) -> BigUint {
     value
 }
 
+fn calculate_value2(byte_array: &[u8]) -> u32 {
+    let mut value: u32 = 0u32;
+    
+    for &byte in byte_array.iter() {
+        value = (value << 8) | u32::from(byte);
+    }
+    
+    value
+}
+
+fn calculate_value3(byte_array: &[u8]) -> u32 {
+    let mut value: u32 = 0u32;
+    
+    for &byte in byte_array.iter() {
+        value = (value << 8) | u32::from(byte);
+    }
+    
+    value
+}
+
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
@@ -58,14 +88,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (sk1, pk1) = generate_keypair();
     #[cfg(not(feature = "x25519"))]
     let (sk1, pk1) = (&sk1.serialize(), &pk1.serialize());
-    print!("{:?}", calculate_value(sk1));
     
 
     let (sk2, pk2) = generate_keypair();
     #[cfg(not(feature = "x25519"))]
     let (sk2, pk2) = (&sk2.serialize(), &pk2.serialize());
-    print!("{:?}", sk2);
 
+    let ex1 = [200u8, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200];
+    print!("Ex1 value {:?}\n", calculate_value(&ex1));
+
+    let ex2 = [200u8, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200];
+    print!("Ex1 value {:?}\n", calculate_value(&ex2));
+
+
+    
+    print!("sk1 {:?}\n", sk1);
+    print!("sk2 {:?}\n", sk2);
+    print!("sk1 value {:?}\n", calculate_value(sk1));
+    print!("sk2 value {:?}\n", calculate_value(sk2));
+    print!("sk1 + sk2 {:?}\n", calculate_value(sk1) + calculate_value(sk2));
+    let compressed_ex2 = u8_array_to_u32_array(&ex2);
+
+    print!("compressed_Ex2 {:?}\n", compressed_ex2);
+
+
+    print!("Sum(ex1 + ex2) {:?}\n", calculate_value(&ex1) + calculate_value(&ex2));
     // let pkz1 = pk1 + pk2;
    
     // let msg = MSG.as_bytes();
@@ -95,7 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     c1.push(xxx);
     c1.remove(0);
 
-    let compressed_sk1 = u8_array_to_u32_array(sk1);
+    let compressed_sk1 = u8_array_to_u32_array(&ex1);
     for (i, chunk) in compressed_sk1.iter().enumerate() {
         println!("Chunk {}: {}", i, chunk);
         c1.push(FheUint32::try_encrypt(*chunk, &public_key).unwrap());
@@ -109,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     c2.push(yyy);
     c2.remove(0);
 
-    let compressed_sk2 = u8_array_to_u32_array(sk2);
+    let compressed_sk2 = u8_array_to_u32_array(&ex2);
     for (i, chunk) in compressed_sk2.iter().enumerate() {
         println!("Chunk {}: {}", i, chunk);
         c2.push(FheUint32::try_encrypt(*chunk, &public_key).unwrap());
@@ -144,10 +191,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
 
 
-    let mut value: BigUint = BigUint::from(0u128);
+    let mut value: BigUint = BigUint::from(0u64);
     
     for element in c.iter() {
         let decrypted_ci : u128 = element.decrypt(&client_key);
+        println!("Deeecrpted i {}", decrypted_ci);
         value = (value << 32) | BigUint::from(decrypted_ci);
     }
 

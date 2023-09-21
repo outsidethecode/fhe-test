@@ -16,6 +16,7 @@ hex = "0.4.3"
 byteorder = "1.4.3"
 ecies = {version = "0.2", features = ["std"]}
 num-bigint = "0.4"
+sunscreen = "*"
 
 [dev-dependencies]
 bencher = "0.1.5"

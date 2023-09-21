@@ -78,12 +78,26 @@ fn calculate_value3(byte_array: &[u8]) -> u32 {
     value
 }
 
+fn calc_value(array: [u32; 8]) -> BigUint {
+    let mut value: BigUint = BigUint::from(0u32);
+    for i in (0..8) {
+        value <<= 32;
+        value += BigUint::from(array[i]);
+    }
+    
+    value
+}
+
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-
     const MSG: &str = "helloworld🌍";
     
+
+
+
+
     
     let (sk1, pk1) = generate_keypair();
     #[cfg(not(feature = "x25519"))]
@@ -94,32 +108,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "x25519"))]
     let (sk2, pk2) = (&sk2.serialize(), &pk2.serialize());
 
-    let ex1 = [200u8, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200];
+    //let ex1 = [254u8, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 200];
+    let ex1 = [42, 106, 154, 98, 72, 133, 11, 18, 148, 49, 124, 163, 86, 169, 197, 242, 88, 88, 208, 68, 250, 147, 155, 212, 124, 88, 83, 65, 248, 191, 198, 160];
+    
     print!("Ex1 value {:?}\n", calculate_value(&ex1));
 
-    let ex2 = [200u8, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200];
-    print!("Ex1 value {:?}\n", calculate_value(&ex2));
+    //let ex2 = [254u8, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 200];
+    let ex2 = [170, 135, 166, 108, 65, 41, 7, 110, 97, 128, 15, 193, 132, 68, 157, 172, 127, 43, 197, 134, 247, 225, 146, 223, 13, 188, 59, 29, 27, 26, 178, 182];
+    print!("Ex2 value {:?}\n", calculate_value(&ex2));
 
 
-    
-    print!("sk1 {:?}\n", sk1);
-    print!("sk2 {:?}\n", sk2);
-    print!("sk1 value {:?}\n", calculate_value(sk1));
-    print!("sk2 value {:?}\n", calculate_value(sk2));
-    print!("sk1 + sk2 {:?}\n", calculate_value(sk1) + calculate_value(sk2));
-    let compressed_ex2 = u8_array_to_u32_array(&ex2);
+    let value_ex1 = BigUint::from_bytes_be(&ex1);
 
-    print!("compressed_Ex2 {:?}\n", compressed_ex2);
+    print!("ex1 value: 1  {:?}\n", value_ex1.to_string());
+    print!("ex1 value: 2 {:?}\n", calculate_value(&ex1).to_string());
+
+    // Create a [u32; 8] array by compressing the [u8; 32] array
+    let mut u32_array: [u32; 8] = [0; 8];
+    for i in 0..8 {
+        let start_index = i * 4;
+        u32_array[i] = ((ex1[start_index] as u32) << 24)
+            | ((ex1[start_index + 1] as u32) << 16)
+            | ((ex1[start_index + 2] as u32) << 8)
+            | (ex1[start_index + 3] as u32);
+    }
+
+    let compressed_ex1 = u8_array_to_u32_array(&ex1);
+    print!("compressed_ex1 : 1 {:?}\n", compressed_ex1);
+    print!("compressed_ex1 : 2 {:?}\n", u32_array);
+
+
+    // Convert the [u32; 8] array to a BigUint
+
+    let compressed_x1_value = calc_value(compressed_ex1);
+    print!("ex1 value: 3 {:?}\n", compressed_x1_value.to_string());
+
+
+    // print!("sk1 {:?}\n", sk1);
+    // print!("sk2 {:?}\n", sk2);
+    // print!("sk1 value {:?}\n", calculate_value(sk1));
+    // print!("sk2 value {:?}\n", calculate_value(sk2));
+    // print!("sk1 + sk2 {:?}\n", calculate_value(sk1) + calculate_value(sk2));
 
 
     print!("Sum(ex1 + ex2) {:?}\n", calculate_value(&ex1) + calculate_value(&ex2));
-    // let pkz1 = pk1 + pk2;
-   
-    // let msg = MSG.as_bytes();
-    // assert_eq!(
-    //     msg,
-    //     decrypt(sk, &encrypt(pk, msg).unwrap()).unwrap().as_slice()
-    // );
 
 
     // Basic configuration to use homomorphic integers
@@ -135,6 +167,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     set_server_key(server_keys);
 
+
+    let aaa = FheUint32::try_encrypt(65535u16, &public_key).unwrap();
+    let bbb = FheUint32::try_encrypt(65535u16, &public_key).unwrap();
+    let ccc = &aaa + &bbb;
+    let ddd: u32 = ccc.decrypt(&client_key);
+
+    println!("DDDDDDDDDDDDDDDDDDDDDDDDD: {}", ddd);
+
+
     let mut c1 = Vec::new();
 
     let xxx = FheUint32::try_encrypt(0u32, &public_key).unwrap();
@@ -146,10 +187,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (i, chunk) in compressed_sk1.iter().enumerate() {
         println!("Chunk {}: {}", i, chunk);
         c1.push(FheUint32::try_encrypt(*chunk, &public_key).unwrap());
-
-        // let shift : u32 = (i*32).try_into().unwrap();
-        // let encrypted_shift = FheUint32::try_encrypt(shift, &public_key).unwrap();
-        // encrypted_sk1 = encrypted_sk1 + &a << shift;
     }
 
     let mut c2 = Vec::new();
@@ -160,14 +197,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (i, chunk) in compressed_sk2.iter().enumerate() {
         println!("Chunk {}: {}", i, chunk);
         c2.push(FheUint32::try_encrypt(*chunk, &public_key).unwrap());
-        // let shift : u32 = (i*32).try_into().unwrap();
-        // let encrypted_shift = FheUint32::try_encrypt(shift, &public_key).unwrap();
-        // encrypted_sk1 = encrypted_sk1 + &a << shift;
     }
 
-
     let start2 = Instant::now();
-
 
     let mut c = Vec::new();
     for i in 0..8 {
@@ -177,83 +209,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let duration2 = start2.elapsed();
     println!("Time elapsed for calculating C () is: {:?}", duration2);
 
-
-    
-
-    // let mut skz1 : BigUint = BigUint::from(0u64);
-    // for i in 0..8 {
-    //     let decrypted_ci : u32 = c[i].decrypt(&client_key);
-    //     let base : u128 = 256;
-    //     println!("Decccc {}", decrypted_ci );
-    //     println!("poe {}", base.pow(i as u32) as u128);
-    //     let decrypted_ci_u128: u128 = decrypted_ci.into();
-    //     skz1 = skz1 + calculate_value(decrypted_ci);
-    // }
-
-
-    let mut value: BigUint = BigUint::from(0u64);
-    
+  
     for element in c.iter() {
-        let decrypted_ci : u128 = element.decrypt(&client_key);
+        let decrypted_ci : u64 = element.decrypt(&client_key);
         println!("Deeecrpted i {}", decrypted_ci);
-        value = (value << 32) | BigUint::from(decrypted_ci);
+
+
     }
 
+    let np1: u32 = c[7].decrypt(&client_key);
+    println!("np1 = {}", np1);
+    let np2: u32 = c[6].decrypt(&client_key);
+    println!("np2 = {}", np2);
+    let np3: u32 = c[5].decrypt(&client_key);
+    println!("np3 = {}", np3);
+    let np4: u32 = c[4].decrypt(&client_key);
+    println!("np4 = {}", np4);
+    let np5: u32 = c[3].decrypt(&client_key);
+    println!("np5 = {}", np5);
+    let np6: u32 = c[2].decrypt(&client_key);
+    println!("np6 = {}", np6);
+    let np7: u32 = c[1].decrypt(&client_key);
+    println!("np7 = {}", np7);
+    let np8: u32 = c[0].decrypt(&client_key);
+    println!("np8 = {}", np8);
 
-    println!("{}", value);
+    // Combine the results to get the final sum
+    let result = (BigUint::from(np1) << 224)
+        | (BigUint::from(np2) << 192)
+        | (BigUint::from(np3) << 160)
+        | (BigUint::from(np4) << 128)
+        | (BigUint::from(np5) << 96)
+        | (BigUint::from(np6) << 64)
+        | (BigUint::from(np7) << 32)
+        | BigUint::from(np8);
 
+    println!("Result: {:?}", result);
 
+    // let compressed_x1_value = calc_value(c);
+    // print!("ex1 value: 3 {:?}\n", compressed_x1_value.to_string());
 
     let duration = start.elapsed();
     println!("Time elapsed in expensive_function() is: {:?}", duration);
 
-
-    // let start = Instant::now();
-
-
-    // let dec_clear_a: u8 = a.decrypt(&client_key);
-
-    // let duration = start.elapsed();
-    // println!("Time elapsed in expensive_function() is: {:?}", duration);
-
-
-
-    // // Basic configuration to use homomorphic integers
-    // let config = ConfigBuilder::all_disabled()
-    //     .enable_default_integers()
-    //     .build();
-
-    // // Key generation
-    // let (client_key, server_keys) = generate_keys(config);
-
-    // // let clear_a = 
-    // // let clear_b = 5u32;
-    // // let clear_c = 7u8;
-
-    
-    // let clear_a = 12u32;
-    // let clear_b = 10u32;
-
-  
-    // let public_key = CompactPublicKey::new(&client_key);
-
-    // let a = FheUint32::try_encrypt(clear_a, &public_key).unwrap();
-    // let b = FheUint32::try_encrypt(clear_b, &public_key).unwrap();
-
-
-
-    // // Server side
-    // set_server_key(server_keys);
-    // let encrypted_res_mul = &a * &b;
-
-    // let dec_clear_a: u8 = a.decrypt(&client_key);
-    // let dec_clear_b: u8 = b.decrypt(&client_key);
-    // let dec_clear: u8 = encrypted_res_mul.decrypt(&client_key);
-
-    // print!("{}", dec_clear);
-
-
-    
+ 
 
     Ok(())
 }

@@ -1,6 +1,8 @@
 #![feature(decl_macro)]
 #[macro_use] extern crate rocket;
 
+use rocket::data::{FromDataSimple, FromData};
+use rocket::http::{ContentType, Status};
 use secp256k1::{Secp256k1};
 use sunscreen::{Ciphertext, PublicKey};
 use tfhe::{prelude::*, FheUint16};
@@ -19,9 +21,10 @@ use sunscreen::{
 };
 
 use rocket::*;
-use rocket::response::content::Json;
 use rocket::request::Form;
-use rocket_contrib::json::Json;
+use rocket_contrib::json::{Json, JsonValue, self};
+
+
 
 #[fhe_program(scheme = "bfv")]
 fn simple_add(a: Cipher<Signed>, b: Cipher<Signed>) -> Cipher<Signed> {
@@ -194,7 +197,7 @@ fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
 }
 
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Device {
     fhe_public_key: String,
     fmc_code: String,
@@ -206,12 +209,19 @@ fn hello() -> Json<&'static str> {
   Json("{\"status\": \"success\", \"message\": \"Hello API!\"}")
 }
 
-#[post("/device", data = "<device>")]
-fn new_device(device: Json<Device>) -> String {
+#[post("/device", format = "json", data = "<device>")]
+fn new_device(device: Json<Device>) -> Json<Device> {
     // let device: Device = device.into_inner();
-    let mut dummy_db: Vec<Device> = Vec::new();
-    dummy_db.push(device);
-    format!("Device added successfully: {:?}", dummy_db)
+    // let mut dummy_db: Vec<Device> = Vec::new();
+    // dummy_db.push(device);
+    // format!("Device added successfully: {:?}", dummy_db)
+
+    let new_device = Device {
+        fhe_public_key: "String".to_string(),
+        fmc_code: "String".to_string(),
+        mobile_hash: "String".to_string()
+    };
+    Json(new_device)
 }
 
 #[catch(404)]

@@ -60,6 +60,16 @@ fn calculate_pk_value(byte_array: &[u8; 65]) -> BigUint {
     value
 }
 
+fn calculate_pk_value_2(byte_array: &[u8; 65]) -> BigUint {
+    let mut value: BigUint = BigUint::from(0u128);
+    
+    for &byte in byte_array.iter() {
+        value = (value << 8) | BigUint::from(byte);
+    }
+    
+    value
+}
+
 fn calc_slice_value(byte_array: &[u8]) -> u32 {
     let mut value: u32 = 0u32;
     
@@ -156,89 +166,47 @@ fn add_private_keys(arr1: &[u8; 32], arr2: &[u8; 32]) -> [u8; 64] {
     result
 }
 
+fn add_public_keys(arr1: &[u8; 65], arr2: &[u8; 65]) -> [u8; 65] {
+    let mut result: [u8; 65] = [0; 65];
+    let mut carry: u8 = 0;
 
+    for i in (0..65).rev() {
+        let sum: u32 = arr1[i] as u32 + arr2[i] as u32 + carry as u32;
+        result[i] = sum as u8 ;
+        // Calculate carry for the next iteration
+        carry = if sum > 255 { 1 } else { 0 };
+    }
+
+    if carry > 0 {
+        println!("******************************************** {}", carry);
+        //result[65] = 1
+    }
+    result
+}
+
+fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
+    let c_value_bytes = c_value.to_bytes_be();
+    let mut sk_empty_32_bytes: [u8; 32] = [0; 32];
+    sk_empty_32_bytes[(32-c_value_bytes.len())..32].copy_from_slice(&c_value_bytes[..c_value_bytes.len()]);
+    sk_empty_32_bytes
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
-    
-    // // Initialize the secp256k1 context
-    // let secp = Secp256k1::new();
-
-    // // Replace these private keys with your actual private keys
-    // let private_key1_bytes: [u8; 32] = [0x01; 32];
-    // let private_key2_bytes: [u8; 32] = [0x02; 32];
-    // let private_key_bytes: [u8; 64] = [0x02; 64];
-
-    // // Create SecretKey objects from the private key bytes
-    // let private_key1 = SecretKey::from_slice(&private_key1_bytes).expect("Invalid private key");
-    // let private_key2 = SecretKey::from_slice(&private_key2_bytes).expect("Invalid private key");
-
-    // // Calculate the corresponding public keys for the private keys
-    // let public_key1 = secp256k1::PublicKey::from_secret_key(&secp, &private_key1_bytes);
-    // let public_key2 = secp256k1::PublicKey::from_secret_key(&secp, &private_key2_bytes);
-
-    
-
-    // println!("Public Key 1: {:?}", public_key1.serialize_compressed());
-    // println!("Public Key 2: {:?}", public_key2.serialize_compressed());
-    // println!("Sum Public Key: {:?}", sum_public_key.serialize_compressed());
-
-    // 
-
-
-
-
-    // let mut rng = rand::thread_rng();
-    
-    // // Generate random test data for arr1 and arr2
-    // let mut arr1: [u8; 32] = rng.gen();
-    // let mut arr2: [u8; 32] = rng.gen();
-
-    // for i in 0..31 {
-    //     arr1[i] = 0;
-    //     arr2[i] = 0;
-    // }
-
-
-    // println!("arr1: {:?}", arr1);
-    // println!("arr2: {:?}", arr2);
-
-    // let sum = add_arrayz(&arr1, &arr2);
-
-    // println!("Sum: {:?}", sum);
-
 
     let app = Compiler::new()
     .fhe_program(simple_add)
     .compile()?;
 
     let runtime = FheRuntime::new(app.params())?;
-
     let (public_key, private_key) = runtime.generate_keys()?;
-
     let serialized_public_key = serde_json::to_vec(&public_key).expect("Serialization failed");
-
     let deserialized_public_key: PublicKey = serde_json::from_slice(&serialized_public_key).expect("Deserialization failed");
 
-
-    let a = runtime.encrypt(Signed::from(2147483647), &deserialized_public_key)?;
-    // let b = runtime.encrypt(Signed::from(2147483647), &public_key)?;
-
-    // let start = Instant::now();
-
-    // let results = runtime.run(app.get_fhe_program(simple_add).unwrap(), vec![a, b], &public_key)?;
-    // let duration = start.elapsed();
-    // println!("Time elapsed in expensive_function() is: {:?}", duration);
-
-    // let c: Signed = runtime.decrypt(&results[0], &private_key)?;
-
-    // println!("{}", c);
-    // Ok(())
 
     let mut rng = rand::thread_rng();
 
     let mut sk1_bytes: [u8; 32] = rng.gen();
-    for i in 0..31 {
+    for i in 0..1 {
         sk1_bytes[i] = 0;
     }
 
@@ -249,7 +217,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print!("sk1 value {:?}\n", calculate_value(sk1));
 
     let mut sk2_bytes: [u8; 32] = rng.gen();
-    for i in 0..31 {
+    for i in 0..1 {
         sk2_bytes[i] = 0;
     }
     let sk2 = libsecp256k1::SecretKey::parse_slice(&sk2_bytes).expect("Invalid secret key");   
@@ -258,26 +226,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print!("sk2 {:?}\n", sk2);
     print!("sk2 value {:?}\n", calculate_value(sk2));
 
-    let mut sk_bytes: [u8; 64] = add_private_keys(&sk1, &sk2);
+    let sk_bytes: [u8; 64] = add_private_keys(&sk1, &sk2);
     let sk = libsecp256k1::SecretKey::parse_slice(&sk_bytes[0..32]).expect("Invalid secret key");   
     let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
     let (sk, pk) = (&sk.serialize(), &pk.serialize());
     let pk_value = calculate_pk_value(pk);
+    let pk_value_2 = calculate_pk_value_2(&add_public_keys(pk1, pk2));
 
     print!("sk {:?}\n", sk);
     print!("sk value {:?}\n", calculate_value(sk));
     print!("sk1 + sk2 ---> {:?}\n", calculate_value(sk1) + calculate_value(sk2));
+    print!("PK1 value {:?}\n", pk1);
+    print!("PK2 value {:?}\n", pk2);
+    print!("PK1 + PK2  {:?}\n", add_public_keys(pk1, pk2));
 
-    // let pk1_value = calculate_pk_value(pk1);
-    // let pk2_value = calculate_pk_value(pk2);
-    // print!("PK1 value {:?}\n", pk1_value);
-    // print!("PK2 value {:?}\n", pk2_value);
     print!("PK value {:?}\n", pk_value);
+    print!("PK value {:?}\n", pk);
+    print!("PK value 2 {:?}\n", pk_value_2);
+    print!("PK value 3 {:?}\n", calculate_pk_value(pk1) + calculate_pk_value(pk2));
   
-    // print!("sk bytes {:?}\n", &sk_bytes);
-    // print!("sk bytes 2 {:?}\n", &sk_bytes_2);
-    // print!("sk1 + sk2 : 22222 {:?}\n", calculate_value(&sk_bytes));
-    // print!("sk1 + sk2 : 33333 {:?}\n", calculate_value(&sk_bytes_2));
 
     let start = Instant::now();
 
@@ -309,24 +276,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         c_value += BigUint::from_str(&decrypted_ci.to_string()).unwrap();
     }
 
-
-    let c_value_bytes = c_value.to_bytes_be();
-   
-    let mut sk_empty_32_bytes: [u8; 32] = [0; 32];
-    println!("sk_empty_32_bytes --- {:?}", sk_empty_32_bytes.clone());
-    sk_empty_32_bytes[(32-c_value_bytes.len())..32].copy_from_slice(&c_value_bytes[..c_value_bytes.len()]);
-
-    println!("sk bytes after copy {:?}", sk_empty_32_bytes.clone());
-    println!("Value of sk bytes {:?}", calculate_value(&sk_empty_32_bytes.clone()));
-
-
-    let secret_key = libsecp256k1::SecretKey::parse_slice(&sk_empty_32_bytes).expect("Invalid secret key");   
+    let c_value_bytes = get_c_value_bytes(c_value);
+    let secret_key = libsecp256k1::SecretKey::parse_slice(&c_value_bytes).expect("Invalid secret key");   
     let pkz2 = libsecp256k1::PublicKey::from_secret_key(&secret_key);
     let pkz2_serialized = pkz2.serialize();
 
-    println!("PKz2 {:?}", calculate_pk_value(&pkz2_serialized));
-    // println!("PKz2 ... {:?}", BigUint::from_bytes_be(&pkz2_serialized));
-
+    println!("PKz2 {:?}", &pkz2_serialized);
+    println!("PKz2 value 1 {:?}", BigUint::from_bytes_be(&pkz2_serialized));
+    println!("PKz2 value 2 {:?}", calculate_pk_value(&pkz2_serialized));
 
     let duration = start.elapsed();
     println!("Time elapsed in expensive_function() is: {:?}", duration);

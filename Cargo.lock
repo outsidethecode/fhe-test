@@ -637,6 +637,7 @@ dependencies = [
  "bencher",
  "byteorder",
  "crypto_box",
+ "curve25519-dalek",
  "ecies",
  "hex",
  "libsecp256k1",

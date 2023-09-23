@@ -1,4 +1,6 @@
-use rsa::signature::digest::typenum::Unsigned;
+#![feature(decl_macro)]
+#[macro_use] extern crate rocket;
+
 use secp256k1::{Secp256k1};
 use sunscreen::{Ciphertext, PublicKey};
 use tfhe::{prelude::*, FheUint16};
@@ -10,32 +12,21 @@ use num_bigint::BigUint;
 use serde::{Serialize, Deserialize};
 use libsecp256k1;
 use rand::Rng;
-use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
-use crypto_box::{
-    aead::{Aead, AeadCore, OsRng},
-    SalsaBox, SecretKey
-};
-
-
-use curve25519_dalek::constants;
-
-use curve25519_dalek::scalar::Scalar;
-
-
-
-
-
 use sunscreen::{
     fhe_program,
     types::{bfv::Signed, Cipher},
     Compiler, Error, FheRuntime,
 };
 
+use rocket::*;
+use rocket::response::content::Json;
+use rocket::request::Form;
+use rocket_contrib::json::Json;
+
 #[fhe_program(scheme = "bfv")]
 fn simple_add(a: Cipher<Signed>, b: Cipher<Signed>) -> Cipher<Signed> {
     a + b
 }
-
 
 fn u8_32_array_to_u32_8_array(arr: &[u8; 32]) -> [u32; 8] {
     let mut result: [u32; 8] = [0; 8];
@@ -202,8 +193,38 @@ fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
     sk_empty_32_bytes
 }
 
+
+#[derive(Deserialize)]
+struct Device {
+    fhe_public_key: String,
+    fmc_code: String,
+    mobile_hash: String
+}
+
+#[get("/hello")]
+fn hello() -> Json<&'static str> {
+  Json("{\"status\": \"success\", \"message\": \"Hello API!\"}")
+}
+
+#[post("/device", data = "<device>")]
+fn new_device(device: Json<Device>) -> String {
+    // let device: Device = device.into_inner();
+    let mut dummy_db: Vec<Device> = Vec::new();
+    dummy_db.push(device);
+    format!("Device added successfully: {:?}", dummy_db)
+}
+
+#[catch(404)]
+fn not_found(req: &Request) -> String {
+    format!("Oh no! We couldn't find the requested path '{}'", req.uri())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
+    rocket::ignite()
+    .register(catchers![not_found])
+    .mount("/api", routes![hello, new_device])
+    .launch();
     
 
     // Initialize the secp256k1 context
@@ -212,13 +233,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Generate two random private keys
     let mut rng = rand::thread_rng();
     let mut sk1_bytes: [u8; 32] = rng.gen();
-    // for i in 0..1 {
-    //     sk1_bytes[i] = 0;
-    // }
+    for i in 0..1 {
+        sk1_bytes[i] &= 0b01111111;
+    }
     let mut sk2_bytes: [u8; 32] = rng.gen();
-    // for i in 0..1 {
-    //     sk2_bytes[i] = 0;
-    // }
+    for i in 0..1 {
+        sk2_bytes[i] &= 0b01111111;
+    }
 
     // Create SecretKey objects from the generated private key bytes
     let sk1 = secp256k1::SecretKey::from_slice(&sk1_bytes).expect("Invalid private key");

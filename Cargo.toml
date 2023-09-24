@@ -31,7 +31,7 @@ reqwest = { version = "0.11", features = ["json"] } # reqwest with JSON parsing 
 futures = "0.3" # for our async / await blocks
 tokio = { version = "1.12.0", features = ["full"] } # for our async runtime
 rocket_contrib = "0.4.11"
-
+flate2="1.0.27"
 
 [dev-dependencies]
 bencher = "0.1.5"

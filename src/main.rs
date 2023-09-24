@@ -201,6 +201,7 @@ fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
 struct Device {
     ec_public_key: Vec<u8>,
     fhe_public_key: Vec<u8>,
+    encrypted_secret_key: Vec<Vec<u8>>,
     fmc_code: String,
     mobile_hash: String
 }
@@ -316,15 +317,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // print!("sk1 {:?}\n", sk1);
     // print!("sk1 value {:?}\n", calculate_value(sk1));
 
-    // let mut sk2_bytes: [u8; 32] = rng.gen();
-    // for i in 0..1 {
-    //     sk2_bytes[i] = 0;
-    // }
-    // let sk2 = libsecp256k1::SecretKey::parse_slice(&sk2_bytes).expect("Invalid secret key");   
-    // let pk2 = libsecp256k1::PublicKey::from_secret_key(&sk2);
-    // let (sk2, pk2) = (&sk2.serialize(), &pk2.serialize());
-    // print!("sk2 {:?}\n", sk2);
-    // print!("sk2 value {:?}\n", calculate_value(sk2));
+    // // let mut sk2_bytes: [u8; 32] = rng.gen();
+    // // for i in 0..1 {
+    // //     sk2_bytes[i] = 0;
+    // // }
+    // // let sk2 = libsecp256k1::SecretKey::parse_slice(&sk2_bytes).expect("Invalid secret key");   
+    // // let pk2 = libsecp256k1::PublicKey::from_secret_key(&sk2);
+    // // let (sk2, pk2) = (&sk2.serialize(), &pk2.serialize());
+    // // print!("sk2 {:?}\n", sk2);
+    // // print!("sk2 value {:?}\n", calculate_value(sk2));
 
     // let sk_bytes: [u8; 64] = add_private_keys(&sk1, &sk2);
     // let sk = libsecp256k1::SecretKey::parse_slice(&sk_bytes[0..32]).expect("Invalid secret key");   

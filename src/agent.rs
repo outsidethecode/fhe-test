@@ -5,7 +5,7 @@ use rocket::catch;
 use rocket::http::ContentType;
 use serde::{Deserialize, Serialize};
 use reqwest::{Error, header::ACCEPT, header::CONTENT_TYPE};
-use secp256k1::{Secp256k1, SecretKey};
+use secp256k1::{Secp256k1, SecretKey, PublicKey};
 use rand::Rng;
 use rocket_contrib::json::{Json, JsonValue, self};
 use rocket::data::{FromDataSimple, FromData};
@@ -14,6 +14,8 @@ use rocket::request::Form;
 use rocket::request::Request;
 use std::collections::HashMap;
 use std::sync::{Mutex, Arc};
+use ecies::{decrypt, encrypt, utils::generate_keypair};
+
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Call {
@@ -50,7 +52,7 @@ impl Device {
     }
 }
 
-async fn generate_keypair() -> (secp256k1::SecretKey, secp256k1::PublicKey, Vec<u8>, Vec<u8>) {
+async fn generate_key_pair() -> (secp256k1::SecretKey, secp256k1::PublicKey, Vec<u8>, Vec<u8>) {
     // Initialize the secp256k1 context
     let secp = Secp256k1::new();
     
@@ -114,9 +116,51 @@ async fn get_devices() -> Result<(), Error> {
             let devices: Vec<Device> = response.json().await?;
             println!("Success! Body:\n{:?}", devices);
 
-            devices.iter().for_each(|device| {
-                
-            });
+            let (agent_secret_key, agent_public_key, agent_serialized_secret_key, agent_serialized_public_key) = generate_key_pair().await;
+            let last_device = devices.last().unwrap();
+
+            // -------------
+            let device_encryption_public_key: &[u8] = &last_device.encryption_public_key;
+            let recipient_public_key = PublicKey::from_slice(
+                device_encryption_public_key
+            ).expect("Invalid public key");
+        
+            // Generate some data to be encrypted
+            // let data_to_encrypt = agent_serialized_private_key;
+        
+            // Calculate the shared secret
+            let shared_secret = secp256k1::ecdh::SharedSecret::new(&recipient_public_key, &agent_secret_key);
+      
+            const MSG: &str = "helloworld🌍";
+
+            // let secret_key : &[u8] = &agent_serialized_secret_key;
+            // let msg = MSG.as_bytes();
+
+            // let encrypted = encrypt(&recipient_public_key.serialize(), msg).unwrap();
+            // println!("Encrypted: ---> {:?}", encrypted);
+            // let decrypted = decrypt(secret_key, &encrypted).unwrap();
+            // println!("Deccrypted: ---> {:?}", decrypted);
+
+            let (sk, pk) = generate_keypair();
+            #[cfg(not(feature = "x25519"))]
+            let (sk, pk) = (&sk.serialize(), &pk.serialize());
+            #[cfg(feature = "x25519")]
+            let (sk, pk) = (sk.as_bytes(), pk.as_bytes());
+
+            let msg = MSG.as_bytes();
+            assert_eq!(
+                msg,
+                decrypt(sk, &encrypt(pk, msg).unwrap()).unwrap().as_slice()
+            );
+
+
+            println!("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHorrrayyy");
+
+            // -------------
+
+            // devices.iter().for_each(|device| {
+            //     device.call_public_key;
+            // });
 
         }
         400..=599 => {
@@ -134,7 +178,6 @@ async fn get_devices() -> Result<(), Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let (agent_private_key, agent_public_key, agent_serialized_private_key, agent_serialized_public_key) = generate_keypair().await;
 
     get_devices().await?;
 

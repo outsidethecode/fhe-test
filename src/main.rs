@@ -199,7 +199,8 @@ fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Device {
-    fhe_public_key: String,
+    ec_public_key: Vec<u8>,
+    fhe_public_key: Vec<u8>,
     fmc_code: String,
     mobile_hash: String
 }
@@ -216,12 +217,14 @@ fn new_device(device: Json<Device>) -> Json<Device> {
     // dummy_db.push(device);
     // format!("Device added successfully: {:?}", dummy_db)
 
-    let new_device = Device {
-        fhe_public_key: "String".to_string(),
-        fmc_code: "String".to_string(),
-        mobile_hash: "String".to_string()
-    };
-    Json(new_device)
+    // let new_device = Device {
+    //     fhe_public_key: "String".to_string(),
+    //     fmc_code: "String".to_string(),
+    //     mobile_hash: "String".to_string()
+    // };
+    // Json(new_device)
+
+    device
 }
 
 #[catch(404)]

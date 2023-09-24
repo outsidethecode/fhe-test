@@ -24,7 +24,15 @@ use rocket::*;
 use rocket::request::Form;
 use rocket_contrib::json::{Json, JsonValue, self};
 
+use std::collections::HashMap;
+use std::sync::{Mutex, Arc};
 
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static::lazy_static! {
+    static ref GLOBAL_DEVICES: Mutex<Vec<Device>> = Mutex::new(Vec::new());
+}
 
 #[fhe_program(scheme = "bfv")]
 fn simple_add(a: Cipher<Signed>, b: Cipher<Signed>) -> Cipher<Signed> {
@@ -199,9 +207,8 @@ fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Device {
-    ec_public_key: Vec<u8>,
-    fhe_public_key: Vec<u8>,
-    encrypted_secret_key: Vec<Vec<u8>>,
+    call_public_key: Vec<u8>,
+    encryption_public_key: Vec<u8>,
     fmc_code: String,
     mobile_hash: String
 }
@@ -224,6 +231,17 @@ fn new_device(device: Json<Device>) -> Json<Device> {
     //     mobile_hash: "String".to_string()
     // };
     // Json(new_device)
+
+    let new_device = Device {
+        call_public_key: device.call_public_key.clone(),
+        encryption_public_key: device.encryption_public_key.clone(),
+        fmc_code: device.fmc_code.clone(),
+        mobile_hash: device.mobile_hash.clone()
+    };
+
+    let mut devices = GLOBAL_DEVICES.lock().unwrap();
+
+    devices.push(new_device);
 
     device
 }

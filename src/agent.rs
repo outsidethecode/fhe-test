@@ -1,8 +1,7 @@
 #![feature(decl_macro)]
 #[macro_use] extern crate rocket;
 
-use rocket::config::Environment;
-use rocket::{catch, Config};
+use rocket::catch;
 use rocket::http::ContentType;
 use serde::{Deserialize, Serialize};
 use reqwest::{Error, header::ACCEPT, header::CONTENT_TYPE};
@@ -16,11 +15,10 @@ use rocket::request::Request;
 use std::collections::HashMap;
 use std::sync::{Mutex, Arc};
 
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static::lazy_static! {
-    static ref GLOBAL_DEVICES: Mutex<Vec<Device>> = Mutex::new(Vec::new());
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+struct Call {
+    agent_call_public_key: Vec<u8>,
+    agent_encrypted_secret_key: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -52,12 +50,6 @@ impl Device {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-struct Call {
-    agent_call_public_key: Vec<u8>,
-    agent_encrypted_secret_key: Vec<u8>,
-}
-
 async fn generate_keypair() -> (secp256k1::SecretKey, secp256k1::PublicKey, Vec<u8>, Vec<u8>) {
     // Initialize the secp256k1 context
     let secp = Secp256k1::new();
@@ -75,24 +67,57 @@ async fn generate_keypair() -> (secp256k1::SecretKey, secp256k1::PublicKey, Vec<
     (secret_key, public_key, secret_key.secret_bytes().to_vec(), public_key.serialize().to_vec())
 }
 
-async fn register_device(device: Device) -> Result<(), Error> {
-    let new_device_json = serde_json::to_string(&device).unwrap();
+async fn call_device(call: Call) -> Result<(), Error> {
+    // let new_device_json = serde_json::to_string(&device).unwrap();
 
-    let url = format!("http://localhost:8000/api/device");
+    // let url = format!("http://localhost:8000/api/device");
+    // let client = reqwest::Client::new();
+    // let response = client
+    //     .post(url)
+    //     .header(ACCEPT, "application/json")
+    //     .header(CONTENT_TYPE, "application/json")
+    //     .body(new_device_json)
+    //     .send()
+    //     .await
+    //     .unwrap();
+
+    // match response.status().as_u16() {
+    //     200..=299 => {
+    //         let body = response.text().await?;
+    //         println!("Success! Body:\n{}", body);
+    //     }
+    //     400..=599 => {
+    //         let status = response.status();
+    //         let error_message = response.text().await?;
+    //         println!("Error {}: {}", status, error_message);
+    //     }
+    //     _ => {
+    //         println!("Unexpected status code: {}", response.status());
+    //     }
+    // }    
+    Ok(())
+}
+
+async fn get_devices() -> Result<(), Error> {
+    let url = format!("http://localhost:8000/api/devices");
     let client = reqwest::Client::new();
     let response = client
-        .post(url)
+        .get(url)
         .header(ACCEPT, "application/json")
         .header(CONTENT_TYPE, "application/json")
-        .body(new_device_json)
         .send()
         .await
         .unwrap();
 
     match response.status().as_u16() {
         200..=299 => {
-            let body = response.text().await?;
-            println!("Success! Body:\n{}", body);
+            let devices: Vec<Device> = response.json().await?;
+            println!("Success! Body:\n{:?}", devices);
+
+            devices.iter().for_each(|device| {
+                
+            });
+
         }
         400..=599 => {
             let status = response.status();
@@ -106,54 +131,12 @@ async fn register_device(device: Device) -> Result<(), Error> {
     Ok(())
 }
 
-#[post("/call", format = "json", data = "<call>")]
-fn new_call(call: Json<Call>) -> Json<Call> {
-    // let device: Device = device.into_inner();
-    // let mut dummy_db: Vec<Device> = Vec::new();
-    // dummy_db.push(device);
-    // format!("Device added successfully: {:?}", dummy_db)
-
-    // let new_device = Device {
-    //     fhe_public_key: "String".to_string(),
-    //     fmc_code: "String".to_string(),
-    //     mobile_hash: "String".to_string()
-    // };
-    // Json(new_device)
-
-    call
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    let (agent_private_key, agent_public_key, agent_serialized_private_key, agent_serialized_public_key) = generate_keypair().await;
 
-    
-
-    let (call_private_key, call_public_key, call_serialized_private_key, call_serialized_public_key) = generate_keypair().await;
-    let (encryption_private_key, encryption_public_key, encryption_serialized_private_key, encryption_serialized_public_key) = generate_keypair().await;
-
-    let device = Device {
-        call_public_key: call_serialized_public_key,
-        encryption_public_key: encryption_serialized_public_key,
-        fmc_code: "String1111".to_string(),
-        mobile_hash: "String1111".to_string()
-    };
-
-
-    let mut devices = GLOBAL_DEVICES.lock().unwrap();
-    devices.push(device.clone());
-
-    println!("+++++++++++++++++++++++++++");
-    register_device(device).await?;
-
-
-    let config = Config::build(Environment::Development)
-    .address("localhost")
-    .port(8001)
-    .finalize().unwrap();
-
-    rocket::custom(config)
-    .mount("/api", routes![new_call])
-    .launch();
+    get_devices().await?;
 
     Ok(())
 } 

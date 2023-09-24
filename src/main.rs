@@ -213,25 +213,40 @@ struct Device {
     mobile_hash: String
 }
 
+impl Device {
+    // Define a new method as an associated function
+    fn new() -> Self {
+        Device { 
+            call_public_key: Vec::new(),
+            encryption_public_key: Vec::new(),
+            fmc_code: "".to_string(),
+            mobile_hash: "".to_string()
+        }
+    }
+
+    fn clone(&self) -> Self {
+        Device {
+            call_public_key: self.call_public_key.clone(),
+            encryption_public_key: self.encryption_public_key.clone(),
+            fmc_code: self.fmc_code.clone(),
+            mobile_hash: self.mobile_hash.clone()
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+struct Call {
+    agent_call_public_key: Vec<u8>,
+    agent_encrypted_secret_key: Vec<u8>,
+}
+
 #[get("/hello")]
 fn hello() -> Json<&'static str> {
   Json("{\"status\": \"success\", \"message\": \"Hello API!\"}")
 }
 
 #[post("/device", format = "json", data = "<device>")]
-fn new_device(device: Json<Device>) -> Json<Device> {
-    // let device: Device = device.into_inner();
-    // let mut dummy_db: Vec<Device> = Vec::new();
-    // dummy_db.push(device);
-    // format!("Device added successfully: {:?}", dummy_db)
-
-    // let new_device = Device {
-    //     fhe_public_key: "String".to_string(),
-    //     fmc_code: "String".to_string(),
-    //     mobile_hash: "String".to_string()
-    // };
-    // Json(new_device)
-
+fn register_device(device: Json<Device>) -> Json<Device> {
     let new_device = Device {
         call_public_key: device.call_public_key.clone(),
         encryption_public_key: device.encryption_public_key.clone(),
@@ -240,10 +255,28 @@ fn new_device(device: Json<Device>) -> Json<Device> {
     };
 
     let mut devices = GLOBAL_DEVICES.lock().unwrap();
-
     devices.push(new_device);
 
     device
+}
+
+#[get("/devices")]
+fn get_devices() -> Json<Vec<Device>> {
+    let mut devices = GLOBAL_DEVICES.lock().unwrap();
+    let mut all_devices = Vec::new();
+
+    devices.iter().for_each(|device| {
+        all_devices.push(device.clone());
+    });
+
+    Json(all_devices)
+}
+
+#[post("/call", format = "json", data = "<call>")]
+fn new_call(call: Json<Call>) -> Json<Call> {
+    
+
+    call
 }
 
 #[catch(404)]
@@ -255,7 +288,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     rocket::ignite()
     .register(catchers![not_found])
-    .mount("/api", routes![hello, new_device])
+    .mount("/api", routes![hello, register_device, get_devices])
     .launch();
     
 

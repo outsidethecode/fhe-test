@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "mobile"
 path = "src/mobile.rs"
 
+[[bin]]
+name = "agent"
+path = "src/agent.rs"
+
 
 [dependencies]
 rand = "0.8.5"

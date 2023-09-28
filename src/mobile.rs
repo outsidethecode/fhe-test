@@ -95,7 +95,7 @@ async fn generate_key_pair() -> (secp256k1::SecretKey, secp256k1::PublicKey) {
 
 async fn register_device() -> Result<(), Error> {
     let my_devices = GLOBAL_DEVICES.lock().unwrap();
-    let my_device = my_devices.get(0).unwrap();
+    let my_device = my_devices.get(my_devices.len()-1).unwrap();
     let device = Device {
         call_public_key: my_device.call_public_key.clone(),
         encryption_public_key: my_device.encryption_public_key.clone(),
@@ -138,23 +138,29 @@ fn new_call(agent: Json<Agent>) -> Json<Agent> {
     // Initialize the secp256k1 context
     let secp = Secp256k1::new();
     let devices = GLOBAL_DEVICES.lock().unwrap();
-    let my_device = devices.get(0).unwrap();
+    let my_device = devices.get(devices.len()-1).unwrap();
     let my_device_encryption_public_key: secp256k1::PublicKey = secp256k1::PublicKey::from_slice(my_device.encryption_public_key.as_slice()).unwrap();
     let agent_public_key: secp256k1::PublicKey = secp256k1::PublicKey::from_slice(agent.agent_public_key.as_slice()).unwrap();
     let sum_public_key: secp256k1::PublicKey = my_device_encryption_public_key.combine(&agent_public_key).expect("Failed to add public keys");
 
     let encryption_secret_key = secp256k1::SecretKey::from_slice(my_device.encryption_secret_key.as_slice()).unwrap().secret_bytes();
-    let agent_secret_key = decrypt(&encryption_secret_key, &agent.encrypted_agent_secret_key).unwrap();
-    let mut agent_secret_key_array: [u8; 32] = [0; 32];
-    agent_secret_key_array.copy_from_slice(agent_secret_key.as_slice());
-    let sum_secret_keys = add_arrays(&agent_secret_key_array, &encryption_secret_key);
-    let secret_key = secp256k1::SecretKey::from_slice(&sum_secret_keys).expect("Invalid private key");
-    let public_key = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
+    match decrypt(&encryption_secret_key, &agent.encrypted_agent_secret_key) {
+        Ok(agent_secret_key) => {
+            let mut agent_secret_key_array: [u8; 32] = [0; 32];
+            agent_secret_key_array.copy_from_slice(agent_secret_key.as_slice());
+            let sum_secret_keys = add_arrays(&agent_secret_key_array, &encryption_secret_key);
+            let secret_key = secp256k1::SecretKey::from_slice(&sum_secret_keys).expect("Invalid private key");
+            let public_key = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
 
-    if sum_public_key.eq(&public_key) {
-        println!("This is mine!");
-    } else {
-        println!("Not for me");
+            if sum_public_key.eq(&public_key) {
+                println!("This is mine!");
+            } else {
+                println!("Not for me");
+            }
+        }
+        Err(err) => {
+            println!("Not for me");
+        }
     }
 
     agent
@@ -191,8 +197,10 @@ async fn create_new_device() {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    create_new_device().await;
-    register_device().await?;
+    for i in 1..10 {
+        create_new_device().await;
+        register_device().await?;
+    }
 
     let config = Config::build(Environment::Development)
     .address("localhost")

@@ -305,7 +305,6 @@ fn new_call(call: Json<Call>) -> Json<Call> {
     println!("**************************************************");
 
     let call_clone = call.clone();
-    let agent = call_clone.agent.clone();
     let devices = call_clone.random_devices;
     // let mut handles = vec![];
 

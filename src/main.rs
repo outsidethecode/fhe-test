@@ -8,7 +8,9 @@ use sunscreen::{Ciphertext, PublicKey};
 use tfhe::{prelude::*, FheUint16};
 use tfhe::{generate_keys, set_server_key, ConfigBuilder, FheUint32, CompactPublicKey};
 use ecies::{decrypt, encrypt, utils::generate_keypair};
+use tokio::runtime::Runtime;
 use std::str::FromStr;
+use std::thread;
 use std::time::{Duration, Instant};
 use num_bigint::BigUint;
 use serde::{Serialize, Deserialize};
@@ -19,6 +21,7 @@ use sunscreen::{
     types::{bfv::Signed, Cipher},
     Compiler, Error, FheRuntime,
 };
+use reqwest::{header::ACCEPT, header::CONTENT_TYPE};
 
 use rocket::*;
 use rocket::request::Form;
@@ -26,6 +29,7 @@ use rocket_contrib::json::{Json, JsonValue, self};
 
 use std::collections::HashMap;
 use std::sync::{Mutex, Arc};
+use tokio::spawn;
 
 #[macro_use]
 extern crate lazy_static;
@@ -205,7 +209,7 @@ fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
 }
 
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct Device {
     call_public_key: Vec<u8>,
     encryption_public_key: Vec<u8>,
@@ -236,8 +240,32 @@ impl Device {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Call {
-    agent_call_public_key: Vec<u8>,
-    agent_encrypted_secret_key: Vec<u8>,
+    random_devices: Vec<Device>,
+    agent: Agent
+}
+
+impl Call {
+    fn clone(&self) -> Self {
+        Call {
+            random_devices: self.random_devices.clone(),
+            agent: self.agent.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+struct Agent {
+    agent_public_key: Vec<u8>,
+    encrypted_agent_secret_key: Vec<u8>,
+}
+
+impl Agent {
+    fn clone(&self) -> Self {
+        Agent {
+            agent_public_key: self.agent_public_key.clone(),
+            encrypted_agent_secret_key: self.encrypted_agent_secret_key.clone(),
+        }
+    }
 }
 
 #[get("/hello")]
@@ -274,7 +302,25 @@ fn get_devices() -> Json<Vec<Device>> {
 
 #[post("/call", format = "json", data = "<call>")]
 fn new_call(call: Json<Call>) -> Json<Call> {
-    
+    println!("**************************************************");
+
+    let call_clone = call.clone();
+    let agent = call_clone.agent.clone();
+    let devices = call_clone.random_devices;
+    // let mut handles = vec![];
+
+    println!("Rand Devices {:?}", devices);
+    for device in &devices {
+        let call_clone = call.clone(); // Clone call for each thread
+        let device_clone = device.clone(); // Clone the device for each thread
+
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async move {
+            println!("hello from the async block");
+            push_notification(&device_clone, &call_clone.agent).await;
+            print!("Pushhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh");
+        });
+    }
 
     call
 }
@@ -284,163 +330,45 @@ fn not_found(req: &Request) -> String {
     format!("Oh no! We couldn't find the requested path '{}'", req.uri())
 }
 
+async fn push_notification(device: &Device, agent: &Agent) -> Result<(), reqwest::Error> {
+    println!("++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+    let agent = serde_json::to_string(&agent).unwrap();
+
+    let url = format!("http://localhost:8001/api/call");
+        let client = reqwest::Client::new();
+        let response = client
+            .post(url)
+            .header(ACCEPT, "application/json")
+            .header(CONTENT_TYPE, "application/json")
+            .body(agent)
+            .send()
+            .await
+            .unwrap();
+
+        match response.status().as_u16() {
+            200..=299 => {
+                let body = response.text().await?;
+                println!("Push notification sent! Body:\n{}", body);
+            }
+            400..=599 => {
+                let status = response.status();
+                let error_message = response.text().await?;
+                println!("Error {}: {}", status, error_message);
+            }
+            _ => {
+                println!("Unexpected status code: {}", response.status());
+            }
+        }  
+
+        Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     rocket::ignite()
     .register(catchers![not_found])
-    .mount("/api", routes![hello, register_device, get_devices])
+    .mount("/api", routes![hello, register_device, get_devices, new_call])
     .launch();
     
-
-    // Initialize the secp256k1 context
-    let secp = Secp256k1::new();
-
-    // Generate two random private keys
-    let mut rng = rand::thread_rng();
-    let mut sk1_bytes: [u8; 32] = rng.gen();
-    for i in 0..1 {
-        sk1_bytes[i] &= 0b01111111;
-    }
-    let mut sk2_bytes: [u8; 32] = rng.gen();
-    for i in 0..1 {
-        sk2_bytes[i] &= 0b01111111;
-    }
-
-    // Create SecretKey objects from the generated private key bytes
-    let sk1 = secp256k1::SecretKey::from_slice(&sk1_bytes).expect("Invalid private key");
-    let sk2 = secp256k1::SecretKey::from_slice(&sk2_bytes).expect("Invalid private key");
-
-    print!("sk1 {:?}\n", sk1);
-    print!("sk1 bytes {:?}\n", sk1.secret_bytes());
-    print!("sk1 bytes {:?}\n", sk1_bytes);
-
-    // Calculate the corresponding public keys for sk1 and sk2
-    let pk1 = secp256k1::PublicKey::from_secret_key(&secp, &sk1);
-    let pk2 = secp256k1::PublicKey::from_secret_key(&secp, &sk2);
-
-    // Calculate the sum of public keys pk1 and pk2
-    let sum_public_key = pk1.combine(&pk2).expect("Failed to add public keys");
-
-    print!("pk1 {:?}\n", pk1);
-    print!("pk2 {:?}\n", pk2);
-    print!("sum_public_key {:?}\n", sum_public_key);
-
-    // Calculate the sum of private keys sk1 and sk2
-    let mut sk_sum_bytes = add_arrayz(&sk1_bytes, &sk2_bytes);
-    let sk = secp256k1::SecretKey::from_slice(&sk_sum_bytes).expect("Invalid private key");
-    let pk = secp256k1::PublicKey::from_secret_key(&secp, &sk);
-
-    print!("public_key {:?}\n", pk);
-
-    // // Calculate the corresponding public key for the sum of private keys
-    // let sk_sum = SecretKey::from_slice(&sk_sum_bytes).expect("Invalid private key");
-    // let sum_public_key_from_sk_sum = PublicKey::from_secret_key(&secp, &sk_sum);
-
-    // println!("Public Key from Point Addition: {:?}", sum_public_key.serialize_compressed());
-    // println!("Public Key from Sum of Private Keys: {:?}", sum_public_key_from_sk_sum.serialize_compressed());
-
-    // // Check if the two public keys are equal
-    // if sum_public_key == sum_public_key_from_sk_sum {
-    //     println!("The public keys are equal.");
-    // } else {
-    //     println!("The public keys are not equal.");
-    // }
-    // let app = Compiler::new()
-    // .fhe_program(simple_add)
-    // .compile()?;
-
-    // let runtime = FheRuntime::new(app.params())?;
-    // let (public_key, private_key) = runtime.generate_keys()?;
-    // let serialized_public_key = serde_json::to_vec(&public_key).expect("Serialization failed");
-    // let deserialized_public_key: PublicKey = serde_json::from_slice(&serialized_public_key).expect("Deserialization failed");
-
-
-    // let mut rng = rand::thread_rng();
-
-    // let mut sk1_bytes: [u8; 32] = rng.gen();
-    // for i in 0..1 {
-    //     sk1_bytes[i] = 0;
-    // }
-
-    // let sk1 = libsecp256k1::SecretKey::parse_slice(&sk1_bytes).expect("Invalid secret key");   
-    // let pk1 = libsecp256k1::PublicKey::from_secret_key(&sk1);
-    // let (sk1, pk1) = (&sk1.serialize(), &pk1.serialize());
-    // print!("sk1 {:?}\n", sk1);
-    // print!("sk1 value {:?}\n", calculate_value(sk1));
-
-    // // let mut sk2_bytes: [u8; 32] = rng.gen();
-    // // for i in 0..1 {
-    // //     sk2_bytes[i] = 0;
-    // // }
-    // // let sk2 = libsecp256k1::SecretKey::parse_slice(&sk2_bytes).expect("Invalid secret key");   
-    // // let pk2 = libsecp256k1::PublicKey::from_secret_key(&sk2);
-    // // let (sk2, pk2) = (&sk2.serialize(), &pk2.serialize());
-    // // print!("sk2 {:?}\n", sk2);
-    // // print!("sk2 value {:?}\n", calculate_value(sk2));
-
-    // let sk_bytes: [u8; 64] = add_private_keys(&sk1, &sk2);
-    // let sk = libsecp256k1::SecretKey::parse_slice(&sk_bytes[0..32]).expect("Invalid secret key");   
-    // let pk = libsecp256k1::PublicKey::from_secret_key(&sk);
-    // let (sk, pk) = (&sk.serialize(), &pk.serialize());
-    // let pk_value = calculate_pk_value(pk);
-    // let pk_value_2 = calculate_pk_value_2(&add_public_keys(pk1, pk2));
-
-    // print!("sk {:?}\n", sk);
-    // print!("sk value {:?}\n", calculate_value(sk));
-    // print!("sk1 + sk2 ---> {:?}\n", calculate_value(sk1) + calculate_value(sk2));
-    // print!("PK1 value {:?}\n", pk1);
-    // print!("PK2 value {:?}\n", pk2);
-    // print!("PK1 + PK2  {:?}\n", add_public_keys(pk1, pk2));
-
-    // print!("PK value {:?}\n", pk_value);
-    // print!("PK value {:?}\n", pk);
-    // print!("PK value 2 {:?}\n", pk_value_2);
-    // print!("PK value 3 {:?}\n", calculate_pk_value(pk1) + calculate_pk_value(pk2));
-  
-
-    // let start = Instant::now();
-
-    // let mut c1 = Vec::new();
-    // let compressed_sk1 = u8_32_array_to_u32_8_array(&sk1);
-    // for (i, chunk) in compressed_sk1.iter().enumerate() {
-    //     let i64_value : i64 = *chunk as i64;
-    //     c1.push(runtime.encrypt(Signed::from(i64_value), &deserialized_public_key)?);
-    // }
-
-    // let mut c2 = Vec::new();
-    // let compressed_sk2 = u8_32_array_to_u32_8_array(&sk2);
-    // for (i, chunk) in compressed_sk2.iter().enumerate() {
-    //     let i64_value : i64 = *chunk as i64;
-    //     c2.push(runtime.encrypt(Signed::from(i64_value), &deserialized_public_key)?);
-    // }
-
-    // let mut c = Vec::new();
-    // for i in 0..8 {
-    //     let a = c1[i].clone();
-    //     let b = c2[i].clone();
-    //     c.push(runtime.run(app.get_fhe_program(simple_add).unwrap(), vec![a, b], &deserialized_public_key)?);
-    // }
-  
-    // let mut c_value: BigUint = BigUint::from(0u128);
-    // for element in c.iter() {
-    //     let decrypted_ci : Signed = runtime.decrypt(&element[0], &private_key)?;
-    //     c_value <<= 32;
-    //     c_value += BigUint::from_str(&decrypted_ci.to_string()).unwrap();
-    // }
-
-    // let c_value_bytes = get_c_value_bytes(c_value);
-    // let secret_key = libsecp256k1::SecretKey::parse_slice(&c_value_bytes).expect("Invalid secret key");   
-    // let pkz2 = libsecp256k1::PublicKey::from_secret_key(&secret_key);
-    // let pkz2_serialized = pkz2.serialize();
-
-    // println!("PKz2 {:?}", &pkz2_serialized);
-    // println!("PKz2 value 1 {:?}", BigUint::from_bytes_be(&pkz2_serialized));
-    // println!("PKz2 value 2 {:?}", calculate_pk_value(&pkz2_serialized));
-
-    // let duration = start.elapsed();
-    // println!("Time elapsed in expensive_function() is: {:?}", duration);
-
- 
-
     Ok(())
 }

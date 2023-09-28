@@ -16,11 +16,16 @@ use std::collections::HashMap;
 use std::sync::{Mutex, Arc};
 use ecies::{decrypt, encrypt, utils::generate_keypair};
 
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Call {
-    agent_call_public_key: Vec<u8>,
-    agent_encrypted_secret_key: Vec<u8>,
+    random_devices: Vec<Device>,
+    agent: Agent
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+struct Agent {
+    agent_public_key: Vec<u8>,
+    encrypted_agent_secret_key: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -52,7 +57,7 @@ impl Device {
     }
 }
 
-async fn generate_key_pair() -> (secp256k1::SecretKey, secp256k1::PublicKey, Vec<u8>, Vec<u8>) {
+async fn generate_key_pair() -> (secp256k1::SecretKey, secp256k1::PublicKey) {
     // Initialize the secp256k1 context
     let secp = Secp256k1::new();
     
@@ -66,37 +71,39 @@ async fn generate_key_pair() -> (secp256k1::SecretKey, secp256k1::PublicKey, Vec
     // Create SecretKey objects from the generated private key bytes
     let secret_key = secp256k1::SecretKey::from_slice(&secret_key_bytes).expect("Invalid private key");
     let public_key = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
-    (secret_key, public_key, secret_key.secret_bytes().to_vec(), public_key.serialize().to_vec())
+    (secret_key, public_key)
 }
 
 async fn call_device(call: Call) -> Result<(), Error> {
-    // let new_device_json = serde_json::to_string(&device).unwrap();
+    println!("---------->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+    let call_json = serde_json::to_string(&call).unwrap();
+    let url = format!("http://localhost:8000/api/call");
+    let client = reqwest::Client::new();
+    let response = client
+        .post(url)
+        .header(ACCEPT, "application/json")
+        .header(CONTENT_TYPE, "application/json")
+        .body(call_json)
+        .send()
+        .await
+        .unwrap();
 
-    // let url = format!("http://localhost:8000/api/device");
-    // let client = reqwest::Client::new();
-    // let response = client
-    //     .post(url)
-    //     .header(ACCEPT, "application/json")
-    //     .header(CONTENT_TYPE, "application/json")
-    //     .body(new_device_json)
-    //     .send()
-    //     .await
-    //     .unwrap();
+    match response.status().as_u16() {
+        200..=299 => {
+            let body = response.text().await?;
+            println!("Request sent successfully! Body:\n{}", body);
+        }
+        400..=599 => {
+            let status = response.status();
+            let error_message = response.text().await?;
+            println!("Error {}: {}", status, error_message);
+        }
+        _ => {
+            println!("Unexpected status code: {}", response.status());
+        }
+    }    
+    println!("----------<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 
-    // match response.status().as_u16() {
-    //     200..=299 => {
-    //         let body = response.text().await?;
-    //         println!("Success! Body:\n{}", body);
-    //     }
-    //     400..=599 => {
-    //         let status = response.status();
-    //         let error_message = response.text().await?;
-    //         println!("Error {}: {}", status, error_message);
-    //     }
-    //     _ => {
-    //         println!("Unexpected status code: {}", response.status());
-    //     }
-    // }    
     Ok(())
 }
 
@@ -114,53 +121,29 @@ async fn get_devices() -> Result<(), Error> {
     match response.status().as_u16() {
         200..=299 => {
             let devices: Vec<Device> = response.json().await?;
-            println!("Success! Body:\n{:?}", devices);
+            println!("Received devices:\n{:?}", devices);
 
-            let (agent_secret_key, agent_public_key, agent_serialized_secret_key, agent_serialized_public_key) = generate_key_pair().await;
+            let (agent_secret_key, agent_public_key) = generate_key_pair().await;
             let last_device = devices.last().unwrap();
 
-            // -------------
             let device_encryption_public_key: &[u8] = &last_device.encryption_public_key;
-            let recipient_public_key = PublicKey::from_slice(
+            let recipient_device_public_key = PublicKey::from_slice(
                 device_encryption_public_key
             ).expect("Invalid public key");
-        
-            // Generate some data to be encrypted
-            // let data_to_encrypt = agent_serialized_private_key;
-        
-            // Calculate the shared secret
-            let shared_secret = secp256k1::ecdh::SharedSecret::new(&recipient_public_key, &agent_secret_key);
-      
-            const MSG: &str = "helloworld🌍";
 
-            // let secret_key : &[u8] = &agent_serialized_secret_key;
-            // let msg = MSG.as_bytes();
+            let encrypted_agent_secret_key = encrypt(&recipient_device_public_key.serialize(), &agent_secret_key.secret_bytes()).unwrap();
 
-            // let encrypted = encrypt(&recipient_public_key.serialize(), msg).unwrap();
-            // println!("Encrypted: ---> {:?}", encrypted);
-            // let decrypted = decrypt(secret_key, &encrypted).unwrap();
-            // println!("Deccrypted: ---> {:?}", decrypted);
-
-            let (sk, pk) = generate_keypair();
-            #[cfg(not(feature = "x25519"))]
-            let (sk, pk) = (&sk.serialize(), &pk.serialize());
-            #[cfg(feature = "x25519")]
-            let (sk, pk) = (sk.as_bytes(), pk.as_bytes());
-
-            let msg = MSG.as_bytes();
-            assert_eq!(
-                msg,
-                decrypt(sk, &encrypt(pk, msg).unwrap()).unwrap().as_slice()
-            );
-
-
-            println!("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHorrrayyy");
-
-            // -------------
-
-            // devices.iter().for_each(|device| {
-            //     device.call_public_key;
-            // });
+            let agent: Agent = Agent {
+                agent_public_key: agent_public_key.serialize().to_vec(),
+                encrypted_agent_secret_key: encrypted_agent_secret_key,
+            };
+            
+            let call = Call {
+                random_devices: devices,
+                agent: agent
+            };
+            println!("{:?}", call);
+            call_device(call).await?;
 
         }
         400..=599 => {

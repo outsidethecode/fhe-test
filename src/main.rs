@@ -1,239 +1,70 @@
 #![feature(decl_macro)]
-#[macro_use] extern crate rocket;
+#[macro_use]
+extern crate rocket;
 
-use rocket::data::{FromDataSimple, FromData};
-use rocket::http::{ContentType, Status};
-use secp256k1::{Secp256k1};
-use sunscreen::{Ciphertext, PublicKey};
-use tfhe::{prelude::*, FheUint16};
-use tfhe::{generate_keys, set_server_key, ConfigBuilder, FheUint32, CompactPublicKey};
 use ecies::{decrypt, encrypt, utils::generate_keypair};
-use tokio::runtime::Runtime;
+use lacore::{schema, establish_connection, create_device};
+use libsecp256k1;
+use num_bigint::BigUint;
+use rand::Rng;
+use reqwest::{header::ACCEPT, header::CONTENT_TYPE};
+use rocket::data::{FromData, FromDataSimple};
+use rocket::http::{ContentType, Status};
+use secp256k1::Secp256k1;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::thread;
 use std::time::{Duration, Instant};
-use num_bigint::BigUint;
-use serde::{Serialize, Deserialize};
-use libsecp256k1;
-use rand::Rng;
 use sunscreen::{
     fhe_program,
     types::{bfv::Signed, Cipher},
     Compiler, Error, FheRuntime,
 };
-use reqwest::{header::ACCEPT, header::CONTENT_TYPE};
+use sunscreen::{Ciphertext, PublicKey};
+use tfhe::{generate_keys, set_server_key, CompactPublicKey, ConfigBuilder, FheUint32};
+use tfhe::{prelude::*, FheUint16};
+use tokio::runtime::Runtime;
 
-use rocket::*;
 use rocket::request::Form;
-use rocket_contrib::json::{Json, JsonValue, self};
+use rocket::*;
+use rocket_contrib::json::{self, Json, JsonValue};
 
+use postgres::{Client, NoTls};
 use std::collections::HashMap;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use tokio::spawn;
 
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static::lazy_static! {
-    static ref GLOBAL_DEVICES: Mutex<Vec<Device>> = Mutex::new(Vec::new());
-}
 
 #[fhe_program(scheme = "bfv")]
 fn simple_add(a: Cipher<Signed>, b: Cipher<Signed>) -> Cipher<Signed> {
     a + b
 }
 
-fn u8_32_array_to_u32_8_array(arr: &[u8; 32]) -> [u32; 8] {
-    let mut result: [u32; 8] = [0; 8];
-
-    for i in 0..8 {
-        let sub_arr = &arr[i*4 .. (i+1)*4];
-        result[i] = calc_slice_value(sub_arr);
-    }
-
-    result
-}
-
-fn calculate_value(byte_array: &[u8; 32]) -> BigUint {
-    let mut value: BigUint = BigUint::from(0u128);
-    
-    for &byte in byte_array.iter() {
-        value = (value << 8) | BigUint::from(byte);
-    }
-    
-    value
-}
-
-fn calculate_pk_value(byte_array: &[u8; 65]) -> BigUint {
-    let mut value: BigUint = BigUint::from(0u128);
-    
-    for &byte in byte_array.iter() {
-        value = (value << 8) | BigUint::from(byte);
-    }
-    
-    value
-}
-
-fn calculate_pk_value_2(byte_array: &[u8; 65]) -> BigUint {
-    let mut value: BigUint = BigUint::from(0u128);
-    
-    for &byte in byte_array.iter() {
-        value = (value << 8) | BigUint::from(byte);
-    }
-    
-    value
-}
-
-fn calc_slice_value(byte_array: &[u8]) -> u32 {
-    let mut value: u32 = 0u32;
-    
-    for &byte in byte_array.iter() {
-        value = (value << 8) | u32::from(byte);
-    }
-    
-    value
-}
-
-fn calc_value(byte_array: Vec<u8>) -> BigUint {
-    let mut value: BigUint = BigUint::from(0u128);
-    
-    for &byte in byte_array.iter() {
-        value = (value << 8) | BigUint::from(byte);
-    }
-    
-    value
-}
-
-fn add_arrays(arr1: &[u8; 32], arr2: &[u8; 32]) -> [u8; 32] {
-    let mut result: [u8; 32] = [0; 32];
-    let mut carry: u8 = 0;
-
-    for i in (0..32) {
-        let sum = arr1[i] + arr2[i] + carry;
-        result[i] = sum;
-        
-        // Calculate carry for the next iteration
-        carry = if sum > 255 { 1 } else { 0 };
-    }
-
-    result
-}
-
-fn add_arrays3(arr1: &[u8; 65], arr2: &[u8; 65]) -> [u8; 65] {
-    let mut result: [u8; 65] = [0; 65];
-    let mut carry: u8 = 0;
-
-    for i in (0..65) {
-        result[i] = arr1[i].wrapping_add(arr2[i]);
-    }
-
-    result
-}
-
-
-fn add_arrays2(arr1: &[u8; 32], arr2: &[u8; 32]) -> [u8; 32] {
-    let mut result: [u8; 32] = [0; 32];
-    let mut carry: u8 = 0;
-
-    for i in (0..32) {
-        result[i] = arr1[i].wrapping_add(arr2[i]);
-    }
-
-    result
-}
-
-
-fn add_arrayz(arr1: &[u8; 32], arr2: &[u8; 32]) -> [u8; 32] {
-    let mut result: [u8; 32] = [0; 32];
-    let mut carry: u8 = 0;
-
-    for i in (0..32).rev() {
-        // println!("{}", arr1[i]);
-        // println!("{}", arr2[i]);
-        // println!("{}", carry);
-                 
-
-        let sum: u32 = arr1[i] as u32 + arr2[i] as u32 + carry as u32;
-        result[i] = sum as u8 ;
-        // println!("{}", sum);
-        // Calculate carry for the next iteration
-        carry = if sum > 255 { 1 } else { 0 };
-    }
-
-    if carry > 0 {
-        println!("***********************************************{}", carry);
-    }
-    result
-}
-
-fn add_private_keys(arr1: &[u8; 32], arr2: &[u8; 32]) -> [u8; 64] {
-    let mut result: [u8; 64] = [0; 64];
-    let mut carry: u8 = 0;
-
-    for i in (0..32).rev() {
-        let sum: u32 = arr1[i] as u32 + arr2[i] as u32 + carry as u32;
-        result[i] = sum as u8 ;
-        // Calculate carry for the next iteration
-        carry = if sum > 255 { 1 } else { 0 };
-    }
-
-    if carry > 0 {
-        result[33] = 1
-    }
-    result
-}
-
-fn add_public_keys(arr1: &[u8; 65], arr2: &[u8; 65]) -> [u8; 65] {
-    let mut result: [u8; 65] = [0; 65];
-    let mut carry: u8 = 0;
-
-    for i in (0..65).rev() {
-        let sum: u32 = arr1[i] as u32 + arr2[i] as u32 + carry as u32;
-        result[i] = sum as u8 ;
-        // Calculate carry for the next iteration
-        carry = if sum > 255 { 1 } else { 0 };
-    }
-
-    if carry > 0 {
-        println!("******************************************** {}", carry);
-        //result[65] = 1
-    }
-    result
-}
-
-fn get_c_value_bytes(c_value: BigUint) -> [u8; 32] {
-    let c_value_bytes = c_value.to_bytes_be();
-    let mut sk_empty_32_bytes: [u8; 32] = [0; 32];
-    sk_empty_32_bytes[(32-c_value_bytes.len())..32].copy_from_slice(&c_value_bytes[..c_value_bytes.len()]);
-    sk_empty_32_bytes
-}
-
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct Device {
-    call_public_key: Vec<u8>,
-    encryption_public_key: Vec<u8>,
-    fmc_code: String,
-    mobile_hash: String
+    message_encryption_public_key: Vec<u8>,
+    pke_public_key: Vec<u8>,
+    fcm_code: String,
+    device_hash: String,
 }
 
 impl Device {
     // Define a new method as an associated function
     fn new() -> Self {
-        Device { 
-            call_public_key: Vec::new(),
-            encryption_public_key: Vec::new(),
-            fmc_code: "".to_string(),
-            mobile_hash: "".to_string()
+        Device {
+            message_encryption_public_key: Vec::new(),
+            pke_public_key: Vec::new(),
+            fcm_code: "".to_string(),
+            device_hash: "".to_string(),
         }
     }
 
     fn clone(&self) -> Self {
         Device {
-            call_public_key: self.call_public_key.clone(),
-            encryption_public_key: self.encryption_public_key.clone(),
-            fmc_code: self.fmc_code.clone(),
-            mobile_hash: self.mobile_hash.clone()
+            message_encryption_public_key: self.message_encryption_public_key.clone(),
+            pke_public_key: self.pke_public_key.clone(),
+            fcm_code: self.fcm_code.clone(),
+            device_hash: self.device_hash.clone(),
         }
     }
 }
@@ -241,7 +72,7 @@ impl Device {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Call {
     random_devices: Vec<Device>,
-    agent: Agent
+    agent: Agent,
 }
 
 impl Call {
@@ -268,42 +99,46 @@ impl Agent {
     }
 }
 
-#[get("/hello")]
-fn hello() -> Json<&'static str> {
-  Json("{\"status\": \"success\", \"message\": \"Hello API!\"}")
-}
-
 #[post("/device", format = "json", data = "<device>")]
 fn register_device(device: Json<Device>) -> Json<Device> {
     let new_device = Device {
-        call_public_key: device.call_public_key.clone(),
-        encryption_public_key: device.encryption_public_key.clone(),
-        fmc_code: device.fmc_code.clone(),
-        mobile_hash: device.mobile_hash.clone()
+        message_encryption_public_key: device.message_encryption_public_key.clone(),
+        pke_public_key: device.pke_public_key.clone(),
+        fcm_code: device.fcm_code.clone(),
+        device_hash: device.device_hash.clone(),
     };
-
-    let mut devices = GLOBAL_DEVICES.lock().unwrap();
-    devices.push(new_device);
+    let connection = &mut establish_connection();
+    create_device(connection, &new_device.message_encryption_public_key, &new_device.pke_public_key, &new_device.fcm_code, &new_device.device_hash);
 
     device
 }
 
 #[get("/devices")]
 fn get_devices() -> Json<Vec<Device>> {
-    let mut devices = GLOBAL_DEVICES.lock().unwrap();
+    let mut client = Client::connect(
+        "postgresql://postgres:postgres@localhost/lastingasset",
+        NoTls,
+    )
+    .unwrap();
+    
     let mut all_devices = Vec::new();
-
-    devices.iter().for_each(|device| {
+    
+    for row in client.query("SELECT id, message_encryption_public_key, pke_public_key, fcm_code, device_hash FROM devices", &[]).unwrap() {
+        let device = Device {
+            message_encryption_public_key: row.get(1), 
+            pke_public_key: row.get(2), 
+            fcm_code: row.get(3), 
+            device_hash: row.get(4) 
+        };
+        println!("{:?}", row);
         all_devices.push(device.clone());
-    });
+    }
 
     Json(all_devices)
 }
 
 #[post("/call", format = "json", data = "<call>")]
 fn new_call(call: Json<Call>) -> Json<Call> {
-    println!("**************************************************");
-
     let call_clone = call.clone();
     let devices = call_clone.random_devices;
     // let mut handles = vec![];
@@ -315,9 +150,7 @@ fn new_call(call: Json<Call>) -> Json<Call> {
 
         let rt = Runtime::new().unwrap();
         rt.block_on(async move {
-            println!("hello from the async block");
             push_notification(&device_clone, &call_clone.agent).await;
-            print!("Pushhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh");
         });
     }
 
@@ -330,44 +163,42 @@ fn not_found(req: &Request) -> String {
 }
 
 async fn push_notification(device: &Device, agent: &Agent) -> Result<(), reqwest::Error> {
-    println!("++++++++++++++++++++++++++++++++++++++++++++++++++++++");
     let agent = serde_json::to_string(&agent).unwrap();
 
     let url = format!("http://localhost:8001/api/call");
-        let client = reqwest::Client::new();
-        let response = client
-            .post(url)
-            .header(ACCEPT, "application/json")
-            .header(CONTENT_TYPE, "application/json")
-            .body(agent)
-            .send()
-            .await
-            .unwrap();
+    let client = reqwest::Client::new();
+    let response = client
+        .post(url)
+        .header(ACCEPT, "application/json")
+        .header(CONTENT_TYPE, "application/json")
+        .body(agent)
+        .send()
+        .await
+        .unwrap();
 
-        match response.status().as_u16() {
-            200..=299 => {
-                let body = response.text().await?;
-                println!("Push notification sent! Body:\n{}", body);
-            }
-            400..=599 => {
-                let status = response.status();
-                let error_message = response.text().await?;
-                println!("Error {}: {}", status, error_message);
-            }
-            _ => {
-                println!("Unexpected status code: {}", response.status());
-            }
-        }  
+    match response.status().as_u16() {
+        200..=299 => {
+            let body = response.text().await?;
+            println!("Push notification sent! Body:\n{}", body);
+        }
+        400..=599 => {
+            let status = response.status();
+            let error_message = response.text().await?;
+            println!("Error {}: {}", status, error_message);
+        }
+        _ => {
+            println!("Unexpected status code: {}", response.status());
+        }
+    }
 
-        Ok(())
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     rocket::ignite()
-    .register(catchers![not_found])
-    .mount("/api", routes![hello, register_device, get_devices, new_call])
-    .launch();
-    
+        .register(catchers![not_found])
+        .mount("/api", routes![register_device, get_devices, new_call])
+        .launch();
+
     Ok(())
 }

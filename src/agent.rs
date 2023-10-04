@@ -30,29 +30,29 @@ struct Agent {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct Device {
-    call_public_key: Vec<u8>,
-    encryption_public_key: Vec<u8>,
-    fmc_code: String,
-    mobile_hash: String
+    message_encryption_public_key: Vec<u8>,
+    pke_public_key: Vec<u8>,
+    fcm_code: String,
+    device_hash: String
 }
 
 impl Device {
     // Define a new method as an associated function
     fn new() -> Self {
         Device { 
-            call_public_key: Vec::new(),
-            encryption_public_key: Vec::new(),
-            fmc_code: "".to_string(),
-            mobile_hash: "".to_string()
+            message_encryption_public_key: Vec::new(),
+            pke_public_key: Vec::new(),
+            fcm_code: "".to_string(),
+            device_hash: "".to_string()
         }
     }
 
     fn clone(&self) -> Self {
         Device {
-            call_public_key: self.call_public_key.clone(),
-            encryption_public_key: self.encryption_public_key.clone(),
-            fmc_code: self.fmc_code.clone(),
-            mobile_hash: self.mobile_hash.clone()
+            message_encryption_public_key: self.message_encryption_public_key.clone(),
+            pke_public_key: self.pke_public_key.clone(),
+            fcm_code: self.fcm_code.clone(),
+            device_hash: self.device_hash.clone()
         }
     }
 }
@@ -75,7 +75,6 @@ async fn generate_key_pair() -> (secp256k1::SecretKey, secp256k1::PublicKey) {
 }
 
 async fn call_device(call: Call) -> Result<(), Error> {
-    println!("---------->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
     let call_json = serde_json::to_string(&call).unwrap();
     let url = format!("http://localhost:8000/api/call");
     let client = reqwest::Client::new();
@@ -102,8 +101,6 @@ async fn call_device(call: Call) -> Result<(), Error> {
             println!("Unexpected status code: {}", response.status());
         }
     }    
-    println!("----------<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
-
     Ok(())
 }
 
@@ -126,9 +123,9 @@ async fn get_devices() -> Result<(), Error> {
             let (agent_secret_key, agent_public_key) = generate_key_pair().await;
             let last_device = devices.last().unwrap();
 
-            let device_encryption_public_key: &[u8] = &last_device.encryption_public_key;
+            let device_pke_public_key: &[u8] = &last_device.pke_public_key;
             let recipient_device_public_key = PublicKey::from_slice(
-                device_encryption_public_key
+                device_pke_public_key
             ).expect("Invalid public key");
 
             let encrypted_agent_secret_key = encrypt(&recipient_device_public_key.serialize(), &agent_secret_key.secret_bytes()).unwrap();

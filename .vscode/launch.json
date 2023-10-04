@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'fhetest'",
+            "name": "Debug executable 'lacore'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=fhetest",
-                    "--package=fhetest"
+                    "--bin=lacore",
+                    "--package=lacore"
                 ],
                 "filter": {
-                    "name": "fhetest",
+                    "name": "lacore",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'fhetest'",
+            "name": "Debug unit tests in executable 'lacore'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=fhetest",
-                    "--package=fhetest"
+                    "--bin=lacore",
+                    "--package=lacore"
                 ],
                 "filter": {
-                    "name": "fhetest",
+                    "name": "lacore",
                     "kind": "bin"
                 }
             },

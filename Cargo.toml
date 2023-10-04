@@ -1,5 +1,5 @@
 [package]
-name = "fhetest"
+name = "lacore"
 version = "0.1.0"
 edition = "2021"
 
@@ -40,6 +40,9 @@ tokio = { version = "1.12.0", features = ["full"] } # for our async runtime
 rocket_contrib = "0.4.11"
 flate2="1.0.27"
 lazy_static = "1.4"
+postgres="0.19.7"
+diesel = { version = "2.1.2", features = ["postgres"] }
+dotenvy = "0.15"
 
 [dev-dependencies]
 bencher = "0.1.5"

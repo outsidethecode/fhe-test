@@ -155,11 +155,11 @@ fn new_call(agent: Json<Agent>) -> Json<Agent> {
             if sum_public_key.eq(&public_key) {
                 println!("This is mine!");
             } else {
-                println!("Not for me");
+                println!("Decrypt error: Not for me");
             }
         }
         Err(err) => {
-            println!("Not for me");
+            println!("Err: Not for me");
         }
     }
 

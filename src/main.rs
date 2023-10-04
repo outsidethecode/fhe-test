@@ -3,7 +3,7 @@
 extern crate rocket;
 
 use ecies::{decrypt, encrypt, utils::generate_keypair};
-use lacore::{schema, establish_connection, create_device};
+use lacore::{schema, establish_connection, create_device, get_devices};
 use libsecp256k1;
 use num_bigint::BigUint;
 use rand::Rng;
@@ -114,23 +114,18 @@ fn register_device(device: Json<Device>) -> Json<Device> {
 }
 
 #[get("/devices")]
-fn get_devices() -> Json<Vec<Device>> {
-    let mut client = Client::connect(
-        "postgresql://postgres:postgres@localhost/lastingasset",
-        NoTls,
-    )
-    .unwrap();
-    
+fn get_random_devices() -> Json<Vec<Device>> {
+    let connection = &mut establish_connection();
     let mut all_devices = Vec::new();
     
-    for row in client.query("SELECT id, message_encryption_public_key, pke_public_key, fcm_code, device_hash FROM devices", &[]).unwrap() {
+    let device_hashes = vec!["String1111".to_string()];
+    for row in get_devices(connection, device_hashes) {
         let device = Device {
-            message_encryption_public_key: row.get(1), 
-            pke_public_key: row.get(2), 
-            fcm_code: row.get(3), 
-            device_hash: row.get(4) 
+            message_encryption_public_key: row.message_encryption_public_key.unwrap(), 
+            pke_public_key: row.pke_public_key.unwrap(), 
+            fcm_code: row.fcm_code.unwrap(), 
+            device_hash: row.device_hash.unwrap() 
         };
-        println!("{:?}", row);
         all_devices.push(device.clone());
     }
 
@@ -197,7 +192,7 @@ async fn push_notification(device: &Device, agent: &Agent) -> Result<(), reqwest
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     rocket::ignite()
         .register(catchers![not_found])
-        .mount("/api", routes![register_device, get_devices, new_call])
+        .mount("/api", routes![register_device, get_random_devices, new_call])
         .launch();
 
     Ok(())

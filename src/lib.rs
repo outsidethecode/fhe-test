@@ -17,7 +17,7 @@ pub fn establish_connection() -> PgConnection {
 }
 
 pub fn create_device(
-    conn: &mut PgConnection,
+    connection: &mut PgConnection,
     message_encryption_public_key: &Vec<u8>,
     pke_public_key: &Vec<u8>,
     fcm_code: &String,
@@ -33,6 +33,24 @@ pub fn create_device(
     diesel::insert_into(devices::table)
         .values(&new_device)
         .returning(Device::as_returning())
-        .get_result(conn)
+        .get_result(connection)
         .expect("Error saving new device")
 }
+
+pub fn get_devices(
+    connection: &mut PgConnection,
+    device_hashes: Vec<String>
+) -> Vec<Device> {
+
+    use self::schema::devices::dsl::*;
+
+    let results: Vec<_> = devices
+        .filter(device_hash.eq_any(device_hashes))
+        .limit(5)
+        .select(Device::as_select())
+        .load(connection)
+        .expect("Error loading posts");
+    
+    results
+}
+
